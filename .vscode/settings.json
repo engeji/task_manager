@@ -2,7 +2,7 @@
     "python.testing.pytestArgs": [
         ".",
         "-c",
-        "test/pytest_env.ini",
+        "test/env.ini",
         "--html=test/reports/Report.html",
         // "--css=test/reports/dark.css",
         // "--self-contained-html",
