@@ -1,3 +1,14 @@
 {
+    "python.testing.pytestArgs": [
+        ".",
+        "-c",
+        "test/pytest_env.ini",
+        "--html=test/reports/Report.html",
+        // "--css=test/reports/dark.css",
+        // "--self-contained-html",
+        "--capture=sys",
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
     // "python.envFile": "${workspaceFolder}/.env"
 }
