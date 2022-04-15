@@ -1,1 +1,1 @@
-tar.exe cf pack.zip .
+"C:\Program Files\7-Zip\7z" a pack.zip .\*.py .\*.txt

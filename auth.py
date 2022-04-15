@@ -1,10 +1,12 @@
 from dispatcher import dp, log, bot, types
 from CRUD import Crud
-
+from aiogram.dispatcher import FSMContext
 @dp.message_handler(commands=['start'])
-async def process_start_command(message: types.Message):
+async def process_start_command(message: types.Message, state:FSMContext):
     log.info(f'try fo auth with {message.from_user.full_name}')
     try:
+        await state.reset_data()
+        await state.reset_state()
         cur_id = message.chat.id
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(types.KeyboardButton('Авторизация 👋', request_contact=True))            
@@ -22,7 +24,7 @@ async def check_contact(message:types.Message):
         Приветствую, {empl[0].name} {empl[0].middle_name}!
         Меня зовут TaskManager Александрович 
         и я постараюсь усложнить Вам жизнь
-        и повысить эффективность работу начальников.        
+        и повысить эффективность работы начальников.        
         ''', reply_markup=types.ReplyKeyboardRemove())
     elif len(empl) == 0:
         await bot.send_message(message.chat.id, 'Я вас не звал')

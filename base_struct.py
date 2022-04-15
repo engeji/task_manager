@@ -6,18 +6,20 @@ class Task:
         self._deadline = kwargs.get('deadline',None) 
         self.discription = kwargs.get('discription',None) 
         self.title = kwargs.get('title',None)
+        self.auther:Employee = kwargs.get('auther',None)
     @property     
     def deadline(self):
         return self._deadline if isinstance(self._deadline, str) or self._deadline is None  else self._deadline.decode('UTF-8')
     @deadline.setter
     def deadline(self, val):
-        return val if isinstance(val, str) or val is None else val.decode('UTF-8')
+        self._deadline = val if isinstance(val, str) or val is None else val.decode('UTF-8')
     def __repr__(self):
         return f'''Поручение:
     название: {self.title}
     проект: {self.project}
     срок: {self.deadline}
     описание: {self.discription}
+    автор: {str(self.auther)}
     исполнитель: {self.empl}'''
     @classmethod
     def from_my_task(cls, **kwargs):

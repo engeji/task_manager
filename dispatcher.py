@@ -1,7 +1,6 @@
-import config
 import logging
 import os
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 log = logging.getLogger(__name__)

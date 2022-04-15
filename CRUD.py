@@ -32,14 +32,40 @@ class Crud:
         self.end_point = os.getenv("YDB_ENDPOINT")
         self.AIM_TOKEN = os.getenv("AIM_TOKEN")
         self.is_prod = os.getenv("IS_PROD")
-        cur_credentials = ydb.AnonymousCredentials() if self.is_prod else ydb.AccessTokenCredentials(self.AIM_TOKEN)
+        cur_credentials = None if self.is_prod == "True" else ydb.AccessTokenCredentials(self.AIM_TOKEN)
         self.driver = ydb.Driver(
             endpoint=self.end_point,
             database=self.database,
             credentials=cur_credentials
         )        
-        self.driver.wait(fail_fast=True, timeout=3)
+        self.driver.wait(fail_fast=True, timeout=5)
         self.session = self.driver.table_client.session().create()
+    def get_employee_by_chat_id(self, chat_id):
+        try:
+            query = """
+            PRAGMA TablePathPrefix("{}");
+            DECLARE $chat_id AS Uint64;            
+            SELECT
+                name, last_name, middle_name, phone, position, chat_id,                
+            FROM employee
+            WHERE chat_id = $chat_id;
+            """.format(self.database)
+
+            prepared_query = self.session.prepare(query)
+            result_sets = self.session.transaction(ydb.SerializableReadWrite()).execute(
+                prepared_query, {
+                    '$chat_id': chat_id,                        
+                },
+                commit_tx=True
+            )    
+        except TimeoutError:
+            return self.driver.discovery_debug_details()
+        except Exception:
+            return 'sadsadsa' + format_exc()
+        return [
+                Employee(**data)
+            for data in result_sets[0].rows]
+
     def get_employee_by_phone(self, phone):
         try:
             query = """
@@ -104,10 +130,8 @@ class Crud:
             )    
         except Exception:
             return format_exc()
-        # return '\n\n\n'.join([
-        #         '\n\n'.join([dict_line[key] for key in dict_line])
-        #     for dict_line in result_sets[0].rows])
         return result_sets[0].rows
+
     def get_empolyee_list(self)-> List[Employee]:
         try:        
             query = """
@@ -124,13 +148,10 @@ class Crud:
             )    
         except Exception:
             return format_exc()
-        # return '\n\n\n'.join([
-        #         '\n\n'.join([dict_line[key] for key in dict_line])
-        #     for dict_line in result_sets[0].rows])
         return [
             Employee(**empl)
         for empl in result_sets[0].rows]
-    def set_task(self, task:Task ):
+    def set_task(self, task:Task, chat_id_from:int ):
         try:        
             query = """
             PRAGMA TablePathPrefix("{}"); 
@@ -140,6 +161,14 @@ class Crud:
             DECLARE $task_deadline AS Utf8;
             DECLARE $task_discription AS Utf8;
             DECLARE $task_name AS Utf8;
+            DECLARE $chat_id_from AS Uint64;
+
+            $auther_id = (
+            SELECT
+                phone
+            FROM employee
+            WHERE chat_id = $chat_id_from
+            );
 
             $max_id = (
             SELECT 
@@ -150,43 +179,45 @@ class Crud:
             $parse = DateTime::Parse("%d.%M.%Y");
             $cur_date = DateTime::MakeDatetime($parse($task_deadline));
             UPSERT INTO task
-                    (id,     executor_id,  project_id,  task_deadline,  task_discription,   task_name )
-            VALUES ($max_id, $executor_id, $project_id, $cur_date,      $task_discription, $task_name );
+                    (id,     executor_id,  project_id,  task_deadline,  task_discription,   task_name, auther_id )
+            VALUES ($max_id, $executor_id, $project_id, $cur_date,      $task_discription, $task_name, $auther_id );
             """.format(self.database)
 
             prepared_query = self.session.prepare(query)
-            result_sets = self.session.transaction(ydb.SerializableReadWrite()).execute(
+            self.session.transaction(ydb.SerializableReadWrite()).execute(
                 prepared_query, {
                     '$executor_id': task.empl.phone,
                     '$project_id': task.project,
                     '$task_deadline': task.deadline,
                     '$task_discription': task.discription,
-                    '$task_name': task.title
+                    '$task_name': task.title,
+                    '$chat_id_from': chat_id_from
                 },
                 commit_tx=True
             )    
         except Exception:
             return format_exc()
         return f'Задача создана'
-    def get_task_by_chat_id(self, chat_id:int)->List[Task]:
+    def get_task_by_chat_id_to_me(self, chat_id:int)->List[Task]:
         try:
-            query = """
-            PRAGMA TablePathPrefix("{}");
+            query = f"""
+            PRAGMA TablePathPrefix("{self.database}");
             DECLARE $chat_id AS Uint64;
             
             $format = DateTime::Format("%d.%M.%Y");
 
+            $my_phone = (SELECT phone FROM employee WHERE chat_id = $chat_id);
+
             SELECT
-                phone, last_name, middle_name, name, position,
-                project_id As project , $format(task_deadline) AS deadline, task_discription AS discription,
-                task_name AS title
+                name, last_name, middle_name, phone, position, chat_id,
+                task_name AS title, project_id As project , $format(task_deadline) AS deadline, task_discription AS discription,
             FROM
                 task
             INNER JOIN
                 employee
-            ON task.executor_id = employee.phone
-            WHERE employee.chat_id = $chat_id
-            """.format(self.database)
+            ON employee.phone = task.auther_id
+            WHERE task.executor_id = $my_phone;
+            """
 
             prepared_query = self.session.prepare(query)
             result_sets = self.session.transaction(ydb.SerializableReadWrite()).execute(
@@ -199,7 +230,41 @@ class Crud:
             return self.driver.discovery_debug_details()
         except Exception:
             return 'sadsadsa' + format_exc()
-        return [
-            Task.from_my_task(**dict_task)
-        for dict_task in result_sets[0].rows]
         # return result_sets[0].rows
+        return [
+            Task(auther=Employee(**dict_task), empl='я', **dict_task)
+        for dict_task in result_sets[0].rows]
+    def get_task_by_chat_id_from_me(self, chat_id:int)->List[Task]:
+        try:
+            query = f"""
+            PRAGMA TablePathPrefix("{self.database}");
+            DECLARE $chat_id AS Uint64;
+            
+            $format = DateTime::Format("%d.%M.%Y");
+            $my_phone = (SELECT phone FROM employee WHERE chat_id = $chat_id);
+            SELECT
+                name, last_name, middle_name, phone, position, chat_id,
+                task_name AS title, project_id As project , $format(task_deadline) AS deadline, task_discription AS discription,
+            FROM
+                task
+            INNER JOIN
+                employee
+            ON employee.phone = task.executor_id
+            WHERE task.auther_id = $my_phone;
+            """
+
+            prepared_query = self.session.prepare(query)
+            result_sets = self.session.transaction(ydb.SerializableReadWrite()).execute(
+                prepared_query, {
+                    '$chat_id': chat_id,                        
+                },
+                commit_tx=True
+            )    
+        except TimeoutError:
+            return self.driver.discovery_debug_details()
+        except Exception:
+            return 'sadsadsa' + format_exc()
+        # return result_sets[0].rows
+        return [
+            Task(empl=Employee(**dict_task), auther='я', **dict_task,)
+        for dict_task in result_sets[0].rows]
